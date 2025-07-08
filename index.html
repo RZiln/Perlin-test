@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Perlin Blend</title>
+</head>
+<body>
+<canvas id="canvas" width="512" height="512"></canvas>
+
+<script>
+// --- Perlin Noise Generator ---
+function createPerlinNoise() {
+  const p = [];
+  for (let i = 0; i < 256; i++) p[i] = i;
+  for (let i = 255; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [p[i], p[j]] = [p[j], p[i]];
+  }
+  const perm = [...p, ...p];
+
+  function fade(t) {
+    return t * t * t * (t * (t * 6 - 15) + 10);
+  }
+
+  function lerp(t, a, b) {
+    return a + t * (b - a);
+  }
+
+  function grad(hash, x, y) {
+    const h = hash & 3;
+    const u = h < 2 ? x : y;
+    const v = h < 2 ? y : x;
+    return ((h & 1) ? -u : u) + ((h & 2) ? -v : v);
+  }
+
+  function noise(x, y) {
+    const X = Math.floor(x) & 255;
+    const Y = Math.floor(y) & 255;
+    const xf = x - Math.floor(x);
+    const yf = y - Math.floor(y);
+    const u = fade(xf);
+    const v = fade(yf);
+
+    const aa = perm[perm[X] + Y];
+    const ab = perm[perm[X] + Y + 1];
+    const ba = perm[perm[X + 1] + Y];
+    const bb = perm[perm[X + 1] + Y + 1];
+
+    const x1 = lerp(u, grad(aa, xf, yf), grad(ba, xf - 1, yf));
+    const x2 = lerp(u, grad(ab, xf, yf - 1), grad(bb, xf - 1, yf - 1));
+
+    return (lerp(v, x1, x2) + 1) / 2;
+  }
+
+  return noise;
+}
+
+// --- Image Blend with Perlin ---
+const perlin = createPerlinNoise();
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const width = canvas.width;
+const height = canvas.height;
+
+const img1 = new Image();
+const img2 = new Image();
+img1.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/70/Solid_black.png/512px-Solid_black.png'; // example
+img2.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/Solid_white.png/512px-Solid_white.png'; // example
+
+Promise.all([
+  new Promise(res => img1.onload = res),
+  new Promise(res => img2.onload = res)
+]).then(() => {
+  // Draw both images to get pixel data
+  const canvas1 = document.createElement('canvas');
+  const canvas2 = document.createElement('canvas');
+  canvas1.width = canvas2.width = width;
+  canvas1.height = canvas2.height = height;
+  const ctx1 = canvas1.getContext('2d');
+  const ctx2 = canvas2.getContext('2d');
+  ctx1.drawImage(img1, 0, 0, width, height);
+  ctx2.drawImage(img2, 0, 0, width, height);
+
+  const data1 = ctx1.getImageData(0, 0, width, height).data;
+  const data2 = ctx2.getImageData(0, 0, width, height).data;
+  const result = ctx.createImageData(width, height);
+  const resultData = result.data;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      const mix = perlin(x * 0.05, y * 0.05); // adjust 0.05 for noise scale
+
+      for (let c = 0; c < 3; c++) {
+        resultData[i + c] = data1[i + c] * (1 - mix) + data2[i + c] * mix;
+      }
+      resultData[i + 3] = 255; // full alpha
+    }
+  }
+
+  ctx.putImageData(result, 0, 0);
+});
+</script>
+</body>
+</html>
